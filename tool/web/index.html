@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spatial SOP — Enterprise B2B Beheerportaal</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #0f172a;
+      --card-border: rgba(255, 255, 255, 0.1);
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --accent-green: #10b981;
+      --accent-blue: #3b82f6;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px; }
+
+    .container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    }
+    .brand-text h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    .brand-text p { font-size: 13px; color: var(--text-muted); }
+
+    /* Hardware Detection Banner */
+    #device-sensor-card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .sensor-info { display: flex; align-items: center; gap: 14px; }
+    .sensor-icon { font-size: 28px; }
+    .sensor-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+    }
+    .badge-lidar { background: rgba(16, 185, 129, 0.2); border: 1px solid var(--accent-green); color: #34d399; }
+    .badge-universal { background: rgba(59, 130, 246, 0.2); border: 1px solid var(--accent-blue); color: #93c5fd; }
+    .sensor-title { font-size: 15px; font-weight: 600; color: #fff; }
+    .sensor-desc { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Kaarten */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    .card-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .card-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; }
+
+    /* Upload Dropzone */
+    .dropzone {
+      border: 2px dashed rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(30, 41, 59, 0.3);
+      transition: all 0.2s ease;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--primary);
+      background: rgba(37, 99, 235, 0.1);
+    }
+    .dropzone-icon { font-size: 36px; margin-bottom: 8px; }
+    .dropzone-text { font-size: 14px; font-weight: 600; color: #fff; }
+    .dropzone-subtext { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    .form-group { margin-top: 18px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #cbd5e1; }
+    .form-input {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+    .form-input:focus { border-color: var(--primary); }
+
+    .btn {
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: #fff; border-color: var(--card-border); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.15); }
+
+    /* Progress & Terminal */
+    #progress-section { display: none; margin-top: 20px; }
+    .progress-status-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; font-weight: 600; }
+    .progress-bar-container { width: 100%; height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #2563eb, #10b981); transition: width 0.4s ease; }
+    .log-terminal {
+      background: #020617;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #94a3b8;
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    /* Object Gallery Grid */
+    .object-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 14px; }
+    .object-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .object-card:hover { transform: translateY(-2px); border-color: rgba(59, 130, 246, 0.4); }
+    .object-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .object-title { font-size: 15px; font-weight: 700; color: #fff; word-break: break-all; }
+    .object-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .object-badge { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+    .object-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(16px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-card {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 440px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
+    }
+    .qr-box {
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 14px;
+      display: inline-block;
+      margin: 16px 0;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    .qr-url-input {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #94a3b8;
+      font-size: 11px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">📦</div>
+        <div class="brand-text">
+          <h1>Spatial SOP — Enterprise Portaal</h1>
+          <p>Automatische 3D Digital Twins & Stemgestuurde Werkinstructies</p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <img src="/api/logo" id="portal-logo" alt="Bedrijfslogo" style="max-height: 32px; max-width: 140px; object-fit: contain;" onerror="this.style.display='none'" />
+        <button class="btn btn-secondary" onclick="document.getElementById('logo-upload-input').click()" style="padding: 6px 12px; font-size: 11px;" title="Upload een eigen bedrijfslogo voor white-labeling van alle 3D viewers en PDF rapporten">
+          🏢 Bedrijfslogo
+        </button>
+        <input type="file" id="logo-upload-input" accept="image/*" style="display: none;" onchange="uploadLogo(this.files[0])" />
+        <span class="sensor-badge badge-lidar">B2B Veiligheidsmodus Actief</span>
+      </div>
+    </header>
+
+    <!-- 📱 Hardware Sensor & LiDAR Detectie Banner -->
+    <section id="device-sensor-card">
+      <div class="sensor-info">
+        <div class="sensor-icon" id="sensor-icon">🔍</div>
+        <div>
+          <span class="sensor-badge" id="sensor-badge">Detecteren...</span>
+          <div class="sensor-title" id="sensor-title">Smartphone Hardware Sensor Check</div>
+          <div class="sensor-desc" id="sensor-desc">Controleren op LiDAR-capaciteit...</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary" onclick="checkDeviceCapabilities()">🔄 Opnieuw controleren</button>
+    </section>
+
+    <!-- Upload & Nieuw Object Sectie -->
+    <section class="card">
+      <div class="card-title"><span>📹</span> Nieuw Toestel Scannen & Verwerken</div>
+      <div class="card-subtitle">Upload een gefilmde video van een machine of een LiDAR-zipbestand. Ons AI-systeem berekent automatisch de 3D-vorm en detecteert de aangewezen onderdelen.</div>
+
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+        <div class="dropzone-icon">☁️</div>
+        <div class="dropzone-text" id="dropzone-label">Sleep video hierheen of klik om te bladeren</div>
+        <div class="dropzone-subtext">Ondersteunt .mp4, .mov (elk toestel) of .zip (LiDAR export van iPhone/iPad Pro)</div>
+        <input type="file" id="file-input" style="display: none;" accept="video/*,.zip" onchange="handleFileSelected(this.files[0])" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="object-name-input">Object / Machinenaam:</label>
+        <input type="text" id="object-name-input" class="form-input" placeholder="Bijv. Motorhelm-Unit-01, Pomp-A2, Schakelkast-West" />
+      </div>
+
+      <div style="margin-top: 18px; display: flex; gap: 10px;">
+        <button id="start-btn" class="btn btn-primary" onclick="startUploadAndPipeline()" disabled>
+          <span>🚀</span> Start 3D SOP Generatie
+        </button>
+        <button id="clear-file-btn" class="btn btn-secondary" onclick="clearFileSelection()" style="display: none; color: #f87171;">
+          <span>❌</span> Selectie wissen
+        </button>
+      </div>
+
+      <!-- Realtime Pipeline Voortgang -->
+      <div id="progress-section">
+        <div class="progress-status-row">
+          <span id="progress-step-name">Initialiseren...</span>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="progress-bar-fill"></div>
+        </div>
+        <div class="log-terminal" id="log-terminal">Wachten op logs...</div>
+        <div id="success-banner" style="display: none; margin-top: 14px;">
+          <button id="open-viewer-btn" class="btn btn-primary" style="background: #10b981;">
+            <span>👓</span> Open 3D Viewer van dit object
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bestaande Objecten / Galerij -->
+    <section class="card">
+      <div class="card-title"><span>📚</span> Verwerkte Objecten & Digital Twins</div>
+      <div class="card-subtitle">Overzicht van alle opgeslagen industriële toestellen en SOP-sessies.</div>
+
+      <div class="object-grid" id="object-grid">
+        <div style="color: var(--text-muted); font-size: 13px;">Laden van objecten...</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- QR-Code Modal -->
+  <div id="qr-modal" class="modal-backdrop" onclick="closeQrModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <h3 style="font-size: 18px; font-weight: 700; color: #fff;">📱 Machinesticker QR-Code</h3>
+      <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Plak deze QR-code op het fysieke toestel. Monteurs scannen hem om direct het 3D-model te openen.</p>
+
+      <div class="qr-box" id="qr-box"></div>
+      <input type="text" id="qr-url-display" class="qr-url-input" readonly />
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-primary" style="flex: 1;" onclick="printQrSticker()">🖨️ Afdrukken als Sticker</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('qr-modal').style.display = 'none'">Sluiten</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================================
+    // 1. HARDWARE CAPABILITY CHECK (LiDAR / CAMERA DETECTIE)
+    // ========================================================
+    async function checkDeviceCapabilities() {
+      const iconEl = document.getElementById('sensor-icon');
+      const badgeEl = document.getElementById('sensor-badge');
+      const titleEl = document.getElementById('sensor-title');
+      const descEl = document.getElementById('sensor-desc');
+
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+
+      // LiDAR herkenning op iOS Pro-modellen
+      if (isIOS && (isSafari || ('maxTouchPoints' in navigator && navigator.maxTouchPoints > 1))) {
+        badgeEl.textContent = 'Hardware LiDAR Beschikbaar';
+        badgeEl.className = 'sensor-badge badge-lidar';
+        iconEl.textContent = '📡';
+        titleEl.textContent = 'Hardware LiDAR Scanner Gedetecteerd';
+        descEl.textContent = 'Je gebruikt een ondersteund iOS Pro toestel. LiDAR-scans worden automatisch met millimetersnelheid verwerkt zonder COLMAP!';
+      } else {
+        badgeEl.textContent = 'Universele Camera Modus';
+        badgeEl.className = 'sensor-badge badge-universal';
+        iconEl.textContent = '📷';
+        titleEl.textContent = 'Standaard Smartphone Camera Gedetecteerd';
+        descEl.textContent = 'Elke gewone smartphonevideo (Android of iOS) is geschikt! Ons AI-systeem berekent automatisch de 3D-geometrie via Structure-from-Motion.';
+      }
+    }
+
+    // ========================================================
+    // 2. WHITE-LABELING: BEDRIJFSLOGO UPLOADEN
+    // ========================================================
+    async function uploadLogo(file) {
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      try {
+        const res = await fetch('/api/upload-logo', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('✅ Bedrijfslogo succesvol geüpload en gesynchroniseerd met alle viewers!');
+          const logoEl = document.getElementById('portal-logo');
+          logoEl.src = '/api/logo?t=' + Date.now();
+          logoEl.style.display = 'inline-block';
+        } else {
+          alert('Fout bij uploaden logo: ' + (data.error || 'Onbekende fout'));
+        }
+      } catch (err) {
+        alert('Fout bij uploaden logo: ' + err.message);
+      }
+    }
+
+    // ========================================================
+    // 3. FILE SELECTIE & UPLOAD LOGICA
+    // ========================================================
+    let selectedFile = null;
+
+    function handleFileSelected(file) {
+      if (!file) return;
+      selectedFile = file;
+
+      const dropLabel = document.getElementById('dropzone-label');
+      dropLabel.textContent = `Geselecteerd: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+
+      const nameInput = document.getElementById('object-name-input');
+      if (!nameInput.value) {
+        const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        nameInput.value = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      }
+
+      document.getElementById('start-btn').disabled = false;
+      document.getElementById('clear-file-btn').style.display = 'inline-flex';
+    }
+
+    function clearFileSelection() {
+      selectedFile = null;
+      document.getElementById('file-input').value = '';
+      document.getElementById('dropzone-label').textContent = 'Sleep video hierheen of klik om te bladeren';
+      document.getElementById('object-name-input').value = '';
+      document.getElementById('start-btn').disabled = true;
+      document.getElementById('clear-file-btn').style.display = 'none';
+      document.getElementById('progress-section').style.display = 'none';
+    }
+
+    const dropzone = document.getElementById('dropzone');
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFileSelected(e.dataTransfer.files[0]);
+      }
+    });
+
+    async function startUploadAndPipeline() {
+      if (!selectedFile) return;
+
+      const nameInput = document.getElementById('object-name-input');
+      const objectName = (nameInput.value || 'Machine-Inspectie').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      const startBtn = document.getElementById('start-btn');
+      startBtn.disabled = true;
+
+      const progressSec = document.getElementById('progress-section');
+      const stepNameEl = document.getElementById('progress-step-name');
+      const pctEl = document.getElementById('progress-pct');
+      const barFillEl = document.getElementById('progress-bar-fill');
+      const logEl = document.getElementById('log-terminal');
+
+      progressSec.style.display = 'block';
+      stepNameEl.textContent = 'Uploaden naar server...';
+      pctEl.textContent = '5%';
+      barFillEl.style.width = '5%';
+      logEl.textContent = 'Uploaden gestart...\n';
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('object_name', objectName);
+
+      try {
+        const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+        const upData = await upRes.json();
+        if (!upData.success) throw new Error(upData.error || 'Upload mislukt');
+
+        stepNameEl.textContent = 'Pipeline starten...';
+        pctEl.textContent = '10%';
+        barFillEl.style.width = '10%';
+        logEl.textContent += `Bestand opgeslagen als ${upData.saved_file}. Pipeline starten...\n`;
+
+        const pipeRes = await fetch('/api/start-pipeline', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ object_name: upData.object_name })
+        });
+        const pipeData = await pipeRes.json();
+        if (!pipeData.success) throw new Error(pipeData.error || 'Pipeline starten mislukt');
+
+        const jobId = pipeData.job_id;
+        const pollInterval = setInterval(async () => {
+          const stRes = await fetch(`/api/job-status?job_id=${jobId}`);
+          const status = await stRes.json();
+
+          stepNameEl.textContent = status.current_step || 'Verwerken...';
+          pctEl.textContent = `${status.progress}%`;
+          barFillEl.style.width = `${status.progress}%`;
+
+          if (status.logs && status.logs.length > 0) {
+            logEl.textContent = status.logs.join('\n');
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+
+          if (status.completed) {
+            clearInterval(pollInterval);
+            if (status.status === 'success') {
+              stepNameEl.textContent = '🎉 3D SOP succesvol gegenereerd!';
+              document.getElementById('success-banner').style.display = 'block';
+              document.getElementById('open-viewer-btn').onclick = () => {
+                window.open(`/viewer/${upData.object_name}/index.html`, '_blank');
+              };
+              loadObjects();
+            } else {
+              stepNameEl.textContent = '❌ Fout opgetreden tijdens verwerking.';
+              barFillEl.style.background = '#ef4444';
+            }
+          }
+        }, 1500);
+
+      } catch (err) {
+        alert('Fout: ' + err.message);
+        startBtn.disabled = false;
+      }
+    }
+
+    // ========================================================
+    // 4. OBJECTEN GALERIJ & AUDITTRAIL
+    // ========================================================
+    async function loadObjects() {
+      const grid = document.getElementById('object-grid');
+      try {
+        const res = await fetch('/api/objects');
+        const data = await res.json();
+        grid.innerHTML = '';
+
+        if (!data.objects || data.objects.length === 0) {
+          grid.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 10px;">Nog geen objecten verwerkt. Upload hierboven een bestand.</div>';
+          return;
+        }
+
+        data.objects.forEach(obj => {
+          const card = document.createElement('div');
+          card.className = 'object-card';
+          card.innerHTML = `
+            <div class="object-card-header">
+              <div>
+                <div class="object-title">${obj.name}</div>
+                <div class="object-meta">Aangemaakt: ${obj.date}</div>
+              </div>
+              <span class="object-badge">${obj.step_count} Stappen</span>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8;">
+              🏢 ${obj.organization} • <span style="color: #60a5fa;">${obj.confidentiality}</span>
+            </div>
+            <div class="object-actions">
+              <a href="/viewer/${obj.name}/index.html" target="_blank" class="btn btn-primary" style="flex: 1; text-decoration: none; justify-content: center;">
+                👓 3D Viewer
+              </a>
+              <a href="/viewer/${obj.name}/index.html?mode=edit" target="_blank" class="btn btn-secondary" style="text-decoration: none; justify-content: center; border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;" title="Open Human-in-the-Loop Web Editor">
+                ✏️ Editor
+              </a>
+              <button class="btn btn-secondary" onclick="showQrModal('${obj.name}')" title="Toon QR-code voor op machine">
+                📱 QR
+              </button>
+              <button class="btn btn-secondary" onclick="deleteObject('${obj.name}')" title="Verwijder dit object en de bestanden" style="color: #f87171; border-color: rgba(239, 68, 68, 0.3);">
+                🗑️
+              </button>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+      } catch (e) {
+        grid.innerHTML = '<div style="color: #f87171; font-size: 13px;">Kan objectenlijst niet ophalen.</div>';
+      }
+    }
+
+    async function deleteObject(objectName) {
+      if (!confirm(`Weet je zeker dat je het object "${objectName}" en alle bijbehorende 3D-bestanden definitief wilt verwijderen?`)) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/delete-object', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ object_name: objectName })
+        });
+        const data = await res.json();
+        if (data.success) {
+          loadObjects();
+        } else {
+          alert('Fout bij verwijderen.');
+        }
+      } catch (e) {
+        alert('Fout bij verwijderen: ' + e.message);
+      }
+    }
+
+    // ========================================================
+    // 5. VECTOR QR-CODE GENERATOR
+    // ========================================================
+    // ========================================================
+    function generateSimpleQrSvg(text) {
+      const encoded = encodeURIComponent(text);
+      return `<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encoded}" alt="QR Code" style="display: block; width: 220px; height: 220px;" />`;
+    }
+
+    function showQrModal(objectName) {
+      const origin = window.location.origin;
+      const viewerUrl = `${origin}/viewer/${objectName}/index.html`;
+
+      document.getElementById('qr-url-display').value = viewerUrl;
+      document.getElementById('qr-box').innerHTML = generateSimpleQrSvg(viewerUrl);
+      document.getElementById('qr-modal').style.display = 'flex';
+    }
+
+    function closeQrModal(e) {
+      if (e.target.id === 'qr-modal') {
+        document.getElementById('qr-modal').style.display = 'none';
+      }
+    }
+
+    function printQrSticker() {
+      const url = document.getElementById('qr-url-display').value;
+      const printWindow = window.open('', '', 'width=600,height=600');
+      printWindow.document.write(`
+        <html>
+        <head>
+          <title>Machinesticker Print</title>
+          <style>
+            body { font-family: sans-serif; text-align: center; padding: 30px; }
+            .sticker-border { border: 3px dashed #000; padding: 24px; border-radius: 12px; display: inline-block; }
+            h2 { margin: 0 0 6px; font-size: 20px; }
+            p { margin: 4px 0 16px; font-size: 13px; color: #444; }
+          </style>
+        </head>
+        <body>
+          <div class="sticker-border">
+            <h2>⚠️ SPATIAL SOP 3D WERKINSTRUCTIE</h2>
+            <p>Scan met smartphone of tablet om 3D inspectie te starten</p>
+            ${document.getElementById('qr-box').innerHTML}
+            <p style="font-family: monospace; font-size: 11px; margin-top: 10px;">${url}</p>
+          </div>
+          <script>window.onload = function() { window.print(); window.close(); }<\/script>
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+
+    // Initialiseer pagina
+    checkDeviceCapabilities();
+    loadObjects();
+  </script>
+</body>
+</html>

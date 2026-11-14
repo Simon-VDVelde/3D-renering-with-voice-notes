@@ -1,0 +1,29 @@
+# Secrets & Environment variables
+.env
+*.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Node / Web viewer
+viewer/node_modules/
+viewer/dist/
+viewer/.wrangler/
+
+# Intermediate pipeline data
+frames/
+colmap/
+output/
+dataset/
+dataset_export/
+*.mp4
+*.wav
+*.mp3
+*.ply
+*.splat

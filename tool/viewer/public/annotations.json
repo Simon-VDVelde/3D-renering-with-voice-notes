@@ -1,0 +1,46 @@
+{
+  "annotations": [
+    {
+      "step": 1,
+      "title": "Bril van de motorgelm",
+      "description": "Inspecteer de voorkant van de bril op beschadigingen of slijtage.",
+      "timestamp": 23.28,
+      "matched_frame": "frames/frame_0071.jpg",
+      "pixel_uv": [
+        1047,
+        1613
+      ],
+      "position_3d": [
+        0.0153,
+        1.9861,
+        1.5526
+      ],
+      "camera_position_3d": [
+        -0.024,
+        1.8913,
+        -2.0234
+      ]
+    },
+    {
+      "step": 2,
+      "title": "Bovenkant van de helm",
+      "description": "Controleer de plastic behuizing van de bovenkant op scheuren of structurele integriteit.",
+      "timestamp": 35.67,
+      "matched_frame": "frames/frame_0108.jpg",
+      "pixel_uv": [
+        960,
+        1860
+      ],
+      "position_3d": [
+        0.0689,
+        1.4717,
+        2.187
+      ],
+      "camera_position_3d": [
+        1.2952,
+        -1.4618,
+        -0.7372
+      ]
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+# ==========================================================
+# SECRETS & OMGEVINGSVARIABELEN (NOOIT COMMITTEN)
+# ==========================================================
+.env
+*.env
+.env.local
+.env.*.local
+!.env.example
+
+# ==========================================================
+# PYTHON ARTIFACTS & VIRTUAL ENVIRONMENTS
+# ==========================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================================
+# NODE / JAVASCRIPT / VIEWER BUILDS
+# ==========================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.vite/
+.wrangler/
+*/viewer/dist/
+viewer/dist/
+
+# ==========================================================
+# GROTE DATA & 3D MODELLEN (GITHUB LIMIET = 100MB)
+# ==========================================================
+# Externe Gaussian Splatting engine (Brush) & archief runs
+engines/
+archive/
+
+# Gegenereerde objecten & pipeline data (bevat gigabytes aan video's en 3D splats)
+objecten/
+
+# Media & Point Cloud formaten
+*.splat
+*.ply
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+
+# Pipeline tussentijdse mappen
+frames/
+colmap/
+dataset/
+dataset_export/
+output/
+debug_frames/
+*.log
+
+# ==========================================================
+# SALES AGENT DATA
+# ==========================================================
+sales-agent/leads.csv
+sales-agent/*.csv
+leads.csv
+
+# ==========================================================
+# OS & EDITOR BESTANDEN
+# ==========================================================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
