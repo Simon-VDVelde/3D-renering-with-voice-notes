@@ -9,6 +9,8 @@ Functionaliteiten:
 3. Automatisch een tijdelijke 3D demo-pagina & voorbeeldmodel genereren in onze eigen SQLite-database
 4. OpenAI API aanroepen om een korte, hyper-gepersonaliseerde B2B sales e-mail te schrijven
    inclusief de unieke demo-link voor directe interactie door de prospect.
+5. Email Dispatcher: Mails automatisch klaarzetten als Concept (Draft) in je mailbox via IMAP,
+   of direct verzenden via SMTP of de Resend API.
 Resultaten worden direct geëxporteerd naar leads.csv (Excel-compatibel).
 """
 
@@ -18,11 +20,15 @@ import csv
 import json
 import time
 import uuid
+import smtplib
+import imaplib
 import sqlite3
 import argparse
 import datetime
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 import requests
 from bs4 import BeautifulSoup
 
@@ -35,7 +41,7 @@ LOCAL_ENV = SCRIPT_DIR / ".env"
 PARENT_ENV = PROJECT_ROOT / "tool" / ".env"
 
 def load_environment():
-    """Laadt API keys uit sales-agent/.env of tool/.env."""
+    """Laadt API keys en configuraties uit sales-agent/.env of tool/.env."""
     env_paths = [LOCAL_ENV, PARENT_ENV]
     for env_path in env_paths:
         if env_path.is_file():
@@ -551,28 +557,305 @@ Spatial SOP — 3D Werkinstructies"""
 
 
 # ==========================================================
+# MODULE 4: EMAIL DISPATCHER (CONCEPTEN IN MAILBOX / VERZENDEN)
+# ==========================================================
+class EmailDispatcher:
+    """
+    Verwerkt het klaarzetten van gegenereerde e-mails als Concept (Draft) in de mailbox via IMAP,
+    of het daadwerkelijk verzenden via SMTP of de Resend API.
+    """
+
+    def __init__(self, action=None, provider=None, from_name=None, from_email=None):
+        self.action = (action or os.environ.get("EMAIL_DISPATCH_ACTION", "draft")).lower()
+        self.provider = (provider or os.environ.get("EMAIL_PROVIDER", "auto")).lower()
+
+        # Afzender configuratie
+        self.from_name = from_name or os.environ.get("EMAIL_FROM_NAME", "Simon").strip('"').strip("'")
+        self.from_email = from_email or os.environ.get("EMAIL_FROM_EMAIL", "").strip() or os.environ.get("EMAIL_USER", "").strip() or "simon@spatialsop.be"
+
+        # Credentials voor IMAP / SMTP
+        self.email_user = os.environ.get("EMAIL_USER", "").strip()
+        self.email_pass = os.environ.get("EMAIL_PASS", "").strip()
+        self.imap_host = os.environ.get("IMAP_HOST", "imap.gmail.com").strip()
+        self.imap_port = int(os.environ.get("IMAP_PORT", 993))
+        self.imap_folder = os.environ.get("IMAP_FOLDER", "Drafts").strip()
+
+        self.smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip()
+        self.smtp_port = int(os.environ.get("SMTP_PORT", 587))
+        self.smtp_use_tls = os.environ.get("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
+
+        # Resend API
+        self.resend_api_key = os.environ.get("RESEND_API_KEY", "").strip()
+
+    def format_from_header(self):
+        """Maakt een propere 'Naam <email>' afzender header."""
+        if self.from_name and self.from_email:
+            return f"{self.from_name} <{self.from_email}>"
+        return self.from_email or "Simon <simon@spatialsop.be>"
+
+    def create_message(self, to_email, subject, body_text):
+        """Genereert een EmailMessage met plain text én een HTML versie met klikbare link."""
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = self.format_from_header()
+        msg["To"] = to_email
+        msg["Date"] = formatdate(localtime=True)
+        msg["Message-ID"] = make_msgid()
+
+        # Plain text versie
+        msg.set_content(body_text)
+
+        # HTML versie voor interactieve klikbare weergave
+        html_content = self._convert_to_html(body_text)
+        msg.add_alternative(html_content, subtype="html")
+        return msg
+
+    def _convert_to_html(self, text):
+        """Converteert platte tekst naar propere HTML met actieve links en alinea's."""
+        escaped = (
+            text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        url_pattern = re.compile(r'(https?://[^\s<>"]+)')
+        escaped = url_pattern.sub(r'<a href="\1" style="color: #2563eb; font-weight: 600; text-decoration: underline;">\1</a>', escaped)
+        paragraphs = escaped.split("\n\n")
+        html_paras = []
+        for p in paragraphs:
+            p_clean = p.strip().replace("\n", "<br>")
+            if p_clean:
+                html_paras.append(f"<p style=\"margin: 0 0 14px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;\">{p_clean}</p>")
+        return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #ffffff;">
+{"".join(html_paras)}
+</body>
+</html>"""
+
+    def dispatch(self, to_email, to_name, subject, body_text):
+        """
+        Verwerkt de e-mail op basis van de gekozen actie (draft, send, dry-run).
+        Geeft een status dict terug voor registratie in leads.csv en console output.
+        """
+        if not to_email or "@" not in to_email:
+            print(f"   ℹ️ [EmailDispatcher] Overgeslagen voor {to_name}: geen geldig e-mailadres.")
+            return {
+                "success": False,
+                "action": self.action,
+                "status": "Overgeslagen (Geen geldig e-mailadres)",
+                "details": f"Geen geldig e-mailadres gevonden voor {to_name}"
+            }
+
+        effective_action = self.action
+        if effective_action == "none":
+            return {
+                "success": True,
+                "action": "none",
+                "status": "Klaar voor verzending",
+                "details": "E-mail gegenereerd, verzending uitgeschakeld"
+            }
+
+        # Check beschikbare inloggegevens
+        has_imap_creds = bool(self.email_user and self.email_pass)
+        has_smtp_creds = bool(self.smtp_host and (not self.email_user or self.email_pass))
+        has_resend = bool(self.resend_api_key)
+
+        # 1. Behandel DRY-RUN / SIMULATIE (wanneer gekozen of wanneer geen inloggegevens geconfigureerd zijn)
+        if effective_action == "dry-run" or (effective_action == "draft" and not has_imap_creds) or (effective_action == "send" and not has_smtp_creds and not has_resend):
+            print(f"   📬 [EmailDispatcher: DRY-RUN] {effective_action.upper()} gesimuleerd voor {to_name} <{to_email}>")
+            print(f"      📌 Onderwerp: {subject}")
+            if not has_imap_creds and not has_resend:
+                print(f"      💡 Tip: Voeg EMAIL_USER/EMAIL_PASS (Gmail App Password) of RESEND_API_KEY toe aan .env om dit live uit te voeren.")
+            status_text = "Concept gesimuleerd (dry-run)" if effective_action == "draft" else "Verzending gesimuleerd (dry-run)"
+            return {
+                "success": True,
+                "action": "dry-run",
+                "status": status_text,
+                "details": "Gesimuleerd (geen actieve credentials in .env)"
+            }
+
+        # 2. ACTIE: DRAFT (Klaarzetten als Concept in mailbox via IMAP)
+        if effective_action == "draft":
+            return self._save_draft_imap(to_email, to_name, subject, body_text)
+
+        # 3. ACTIE: SEND (Versturen via Resend of SMTP)
+        if effective_action == "send":
+            if self.provider == "resend" or (self.provider == "auto" and has_resend):
+                return self._send_resend(to_email, to_name, subject, body_text)
+            else:
+                return self._send_smtp(to_email, to_name, subject, body_text)
+
+        return {
+            "success": False,
+            "action": effective_action,
+            "status": "Onbekende actie",
+            "details": f"Onbekende dispatch actie '{effective_action}'"
+        }
+
+    def _save_draft_imap(self, to_email, to_name, subject, body_text):
+        """Zet de e-mail als Concept klaar in de IMAP-map van de gebruiker (bijv. Gmail Concepten)."""
+        print(f"   📝 [EmailDispatcher: IMAP] Concept opslaan in mailbox voor {to_name} <{to_email}>...")
+        try:
+            msg = self.create_message(to_email, subject, body_text)
+
+            imap = imaplib.IMAP4_SSL(self.imap_host, self.imap_port, timeout=15)
+            imap.login(self.email_user, self.email_pass)
+
+            # Zoek actieve conceptenmap
+            target_folder = self.imap_folder
+            status, folder_list = imap.list()
+            if status == "OK":
+                folders_raw = [f.decode("latin1", errors="ignore") for f in folder_list]
+                for f in folders_raw:
+                    if any(term in f.lower() for term in ["drafts", "concepten"]):
+                        match = re.search(r'"([^"]+)"$', f.strip())
+                        if match:
+                            target_folder = match.group(1)
+                            break
+                        else:
+                            parts = f.strip().split()
+                            if parts:
+                                target_folder = parts[-1].strip('"')
+                                break
+
+            # Append naar drafts met \Draft vlag
+            now = time.time()
+            result, _ = imap.append(target_folder, "(\\Draft)", imaplib.Time2Internaldate(now), msg.as_bytes())
+            imap.logout()
+
+            if result == "OK":
+                print(f"   ✅ [EmailDispatcher] Concept succesvol klaargezet in '{target_folder}'!")
+                return {
+                    "success": True,
+                    "action": "draft",
+                    "status": f"Concept klaargezet in mailbox ({target_folder})",
+                    "details": f"Opgeslagen in {target_folder}"
+                }
+            else:
+                print(f"   ⚠️ [EmailDispatcher] IMAP append status: {result}")
+                return {
+                    "success": False,
+                    "action": "draft",
+                    "status": f"IMAP status: {result}",
+                    "details": f"Status: {result}"
+                }
+
+        except Exception as e:
+            print(f"   ❌ [EmailDispatcher] Fout bij opslaan concept via IMAP: {e}")
+            return {
+                "success": False,
+                "action": "draft",
+                "status": f"Fout bij concept: {e}",
+                "details": str(e)
+            }
+
+    def _send_resend(self, to_email, to_name, subject, body_text):
+        """Verstuurt de e-mail via de Resend REST API."""
+        print(f"   🚀 [EmailDispatcher: Resend] E-mail versturen naar {to_name} <{to_email}>...")
+        try:
+            url = "https://api.resend.com/emails"
+            headers = {
+                "Authorization": f"Bearer {self.resend_api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "from": self.format_from_header(),
+                "to": [to_email],
+                "subject": subject,
+                "text": body_text,
+                "html": self._convert_to_html(body_text)
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=15)
+            if res.status_code in (200, 201):
+                data = res.json()
+                resend_id = data.get("id", "")
+                print(f"   ✅ [EmailDispatcher] E-mail succesvol verzonden via Resend! (ID: {resend_id})")
+                return {
+                    "success": True,
+                    "action": "send",
+                    "status": f"Verzonden via Resend ({resend_id})",
+                    "details": f"Resend ID: {resend_id}"
+                }
+            else:
+                err_msg = res.text
+                print(f"   ❌ [EmailDispatcher] Resend API fout ({res.status_code}): {err_msg}")
+                return {
+                    "success": False,
+                    "action": "send",
+                    "status": f"Resend fout ({res.status_code})",
+                    "details": err_msg
+                }
+        except Exception as e:
+            print(f"   ❌ [EmailDispatcher] Fout bij Resend aanroep: {e}")
+            return {
+                "success": False,
+                "action": "send",
+                "status": f"Fout bij Resend: {e}",
+                "details": str(e)
+            }
+
+    def _send_smtp(self, to_email, to_name, subject, body_text):
+        """Verstuurt de e-mail via standaard SMTP (bijv. Gmail of eigen mailserver)."""
+        print(f"   🚀 [EmailDispatcher: SMTP] E-mail versturen naar {to_name} <{to_email}> via {self.smtp_host}...")
+        try:
+            msg = self.create_message(to_email, subject, body_text)
+
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=15) as server:
+                    if self.email_user and self.email_pass:
+                        server.login(self.email_user, self.email_pass)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15) as server:
+                    if self.smtp_use_tls:
+                        server.starttls()
+                    if self.email_user and self.email_pass:
+                        server.login(self.email_user, self.email_pass)
+                    server.send_message(msg)
+
+            print(f"   ✅ [EmailDispatcher] E-mail succesvol verzonden via SMTP ({self.smtp_host})!")
+            return {
+                "success": True,
+                "action": "send",
+                "status": f"Verzonden via SMTP ({self.smtp_host})",
+                "details": f"Verzonden naar {to_email}"
+            }
+        except Exception as e:
+            print(f"   ❌ [EmailDispatcher] Fout bij verzenden via SMTP: {e}")
+            return {
+                "success": False,
+                "action": "send",
+                "status": f"SMTP fout: {e}",
+                "details": str(e)
+            }
+
+
+# ==========================================================
 # ORCHESTRATOR & CSV EXPORT
 # ==========================================================
-def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", output_file="leads.csv", demo=False, base_url=None):
+def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", output_file="leads.csv", demo=False, base_url=None, dispatch="draft", provider="auto", from_name=None, from_email=None):
     """
     Orkestreert de complete flow:
-    Zoeken -> Scrapen -> 3D Demo Aanmaken in Database -> AI Copywriting met Demo Link -> CSV Export.
+    Zoeken -> Scrapen -> 3D Demo Aanmaken in Database -> AI Copywriting met Demo Link -> Email Dispatcher (Concept/Verzenden) -> CSV Export.
     """
     effective_base_url = (base_url or DEFAULT_BASE_DEMO_URL).rstrip("/")
 
     print("==========================================================")
     print("🚀 B2B SALES AGENT — LEAD GENERATION & AI OUTREACH")
     print("==========================================================")
-    print(f"🎯 Zoekopdracht:  {query}")
-    print(f"📊 Aantal leads:   {count}")
-    print(f"🌐 Demo Base URL:  {effective_base_url}")
-    print(f"📁 Uitvoerbestand: {output_file}")
+    print(f"🎯 Zoekopdracht:    {query}")
+    print(f"📊 Aantal leads:     {count}")
+    print(f"🌐 Demo Base URL:    {effective_base_url}")
+    print(f"📧 E-mail Actie:     {dispatch.upper()} (Provider: {provider})")
+    print(f"📁 Uitvoerbestand:   {output_file}")
     print("==========================================================")
 
     searcher = SerperSearcher()
     scraper = WebsiteScraper()
     demo_manager = DemoManager(base_url=effective_base_url)
     copywriter = SalesEmailGenerator()
+    dispatcher = EmailDispatcher(action=dispatch, provider=provider, from_name=from_name, from_email=from_email)
 
     # 1. Bedrijven zoeken via Serper.dev
     if demo:
@@ -586,7 +869,7 @@ def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", o
 
     processed_leads = []
 
-    # 2, 3 & 4. Scrapen, Demo Genereren en e-mails schrijven
+    # 2, 3, 4 & 5. Scrapen, Demo Genereren, e-mails schrijven en Dispatch uitvoeren
     for idx, lead in enumerate(raw_leads, 1):
         name = lead.get("name", "Bedrijf")
         website = lead.get("website", "")
@@ -601,7 +884,7 @@ def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", o
         company_summary = scrape_result.get("summary", "")
         email = scrape_result.get("email", "")
 
-        # Nieuw: Automatisch een tijdelijke 3D demo aanmaken in onze database
+        # Module 3: Automatisch een tijdelijke 3D demo aanmaken in onze database
         demo_info = demo_manager.create_company_demo(
             company_name=name,
             website=website,
@@ -613,9 +896,18 @@ def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", o
         demo_url = demo_info["demo_url"]
         expiry_date = demo_info["expires_at"]
 
-        # Module 3: OpenAI e-mail genereren met de unieke demo-link
+        # Module 4: OpenAI e-mail genereren met de unieke demo-link
         print("   ✍️ [Module 3] Gepersonaliseerde salesmail genereren via OpenAI...")
         subject, email_body = copywriter.generate_email(name, company_summary, category, demo_url)
+
+        # Module 5: Email Dispatcher (als Concept in mailbox opslaan of direct versturen)
+        dispatch_res = dispatcher.dispatch(
+            to_email=email,
+            to_name=name,
+            subject=subject,
+            body_text=email_body
+        )
+        final_status = dispatch_res.get("status", "Klaar voor verzending")
 
         processed_leads.append({
             "Bedrijfsnaam": name,
@@ -629,7 +921,7 @@ def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", o
             "Bedrijfsomschrijving": company_summary[:250] + "..." if len(company_summary) > 250 else company_summary,
             "Onderwerp_Mail": subject,
             "Gepersonaliseerde_Mail": email_body,
-            "Status": "Klaar voor verzending"
+            "Status": final_status
         })
 
         time.sleep(0.5)
@@ -661,7 +953,7 @@ def run_sales_agent(query="machinebouwers Vlaanderen", count=10, country="be", o
             writer.writerow(item)
 
     print("\n==========================================================")
-    print(f"🎉 SUCCES! {len(processed_leads)} leads met unieke 3D-demo's opgeslagen:")
+    print(f"🎉 SUCCES! {len(processed_leads)} leads verwerkt en opgeslagen:")
     print(f"👉 CSV Bestand: {out_path}")
     print(f"📂 Database:    {demo_manager.db_path}")
     print("==========================================================")
@@ -675,15 +967,33 @@ def main():
     parser.add_argument("--output", type=str, default="leads.csv", help="Naam van het CSV-uitvoerbestand (standaard: leads.csv)")
     parser.add_argument("--demo", action="store_true", help="Draai met voorbeeld-leads zonder Serper.dev API-aanroepen")
     parser.add_argument("--base-url", type=str, default=None, help="Basis-URL voor gegenereerde demo-links (bijv. 'https://jouwwebsite.be/demo')")
+    parser.add_argument("--dispatch", type=str, choices=["draft", "send", "dry-run", "none"], default=os.environ.get("EMAIL_DISPATCH_ACTION", "draft"), help="E-mail actie: 'draft' (in mailbox klaarzetten), 'send' (verzenden), 'dry-run' (simuleren), of 'none'")
+    parser.add_argument("--provider", type=str, choices=["auto", "imap", "smtp", "resend", "dry-run"], default=os.environ.get("EMAIL_PROVIDER", "auto"), help="Verzend/Draft provider: 'auto', 'imap', 'smtp', 'resend'")
+    parser.add_argument("--send-now", action="store_true", help="Shortcut om direct te verzenden in plaats van als concept klaar te zetten")
+    parser.add_argument("--dry-run", action="store_true", help="Shortcut om alleen te simuleren zonder verbinding te maken met de mailserver")
+    parser.add_argument("--from-name", type=str, default=None, help="Afzendernaam (bijv. 'Simon')")
+    parser.add_argument("--from-email", type=str, default=None, help="Afzender e-mailadres (bijv. 'simon@bedrijf.be')")
 
     args = parser.parse_args()
+
+    # Bepaal effectieve actie
+    effective_dispatch = args.dispatch
+    if args.send_now:
+        effective_dispatch = "send"
+    elif args.dry_run:
+        effective_dispatch = "dry-run"
+
     run_sales_agent(
         query=args.query,
         count=args.count,
         country=args.country,
         output_file=args.output,
         demo=args.demo,
-        base_url=args.base_url
+        base_url=args.base_url,
+        dispatch=effective_dispatch,
+        provider=args.provider,
+        from_name=args.from_name,
+        from_email=args.from_email
     )
 
 if __name__ == "__main__":
