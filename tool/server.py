@@ -17,6 +17,7 @@ import shutil
 import mimetypes
 import subprocess
 import threading
+import sqlite3
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -24,6 +25,8 @@ from urllib.parse import urlparse, parse_qs
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 OBJECTEN_DIR = PROJECT_ROOT / "objecten"
+DEMOS_DIR = PROJECT_ROOT / "demos"
+DEMOS_DB_PATH = DEMOS_DIR / "demos.db"
 WEB_DIR = BASE_DIR / "web"
 TOOL_DIR = BASE_DIR
 
@@ -64,6 +67,11 @@ class SpatialSOPHandler(BaseHTTPRequestHandler):
             self.handle_get_inspections(object_name)
             return
 
+        # 3.5. API: Gegenereerde B2B sales demo's
+        if path == "/api/demos":
+            self.handle_get_demos()
+            return
+
         # 4. Bedrijfslogo serveren (White-labeling)
         if path == "/api/logo" or path == "/logo.svg" or path == "/logo.png":
             candidate = OBJECTEN_DIR / "logo.png"
@@ -73,6 +81,16 @@ class SpatialSOPHandler(BaseHTTPRequestHandler):
                 candidate = TOOL_DIR / "viewer" / "public" / "logo.svg"
             mime = "image/png" if candidate.suffix == ".png" else "image/svg+xml"
             self.serve_file(candidate, mime)
+            return
+
+        # 4.5. Tijdelijke 3D Demo routering voor B2B leads: /demo/<slug>/...
+        if path.startswith("/demo/"):
+            self.handle_serve_demo(path[len("/demo/"):])
+            return
+        elif path == "/demo":
+            self.send_response(302)
+            self.send_header("Location", "/demo/")
+            self.end_headers()
             return
 
         # 5. Viewer routering: /viewer/<object_name>/...
@@ -584,6 +602,106 @@ class SpatialSOPHandler(BaseHTTPRequestHandler):
             self.serve_file(target_file, mime or "application/octet-stream")
         else:
             self.send_error(404, f"Bestand {file_path} niet gevonden voor {object_name}")
+
+    def handle_get_demos(self):
+        """Haalt een overzicht op van alle gegenereerde B2B sales demo's uit SQLite."""
+        demos = []
+        if DEMOS_DB_PATH.is_file():
+            try:
+                conn = sqlite3.connect(str(DEMOS_DB_PATH))
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT id, company_name, slug, website, email, sector, demo_url, created_at, expires_at, views_count, last_viewed_at, status FROM demos ORDER BY created_at DESC")
+                for row in cur.fetchall():
+                    demos.append(dict(row))
+                conn.close()
+            except Exception as e:
+                print(f"Fout bij ophalen demos uit database: {e}")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(json.dumps({"demos": demos}).encode("utf-8"))
+
+    def increment_demo_views(self, slug):
+        """Verhoogt het aantal views voor een specifieke demo in SQLite."""
+        if not DEMOS_DB_PATH.is_file():
+            return
+        try:
+            conn = sqlite3.connect(str(DEMOS_DB_PATH))
+            cur = conn.cursor()
+            now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute("UPDATE demos SET views_count = views_count + 1, last_viewed_at = ? WHERE slug = ?", (now_str, slug))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Waarschuwing bij ophogen views voor demo '{slug}': {e}")
+
+    def handle_serve_demo(self, subpath):
+        """Serveert de gepersonaliseerde 3D demo voor een bedrijf (/demo/<slug>/...)."""
+        clean_sub = subpath.strip("/")
+        parts = clean_sub.split("/", 1)
+        slug = parts[0]
+        if not slug:
+            self.send_error(404, "Geen demo-naam opgegeven")
+            return
+
+        # Redirect naar trailing slash voor correcte relatieve asset paths
+        if len(parts) == 1:
+            if not self.path.endswith("/"):
+                parsed = urlparse(self.path)
+                query = f"?{parsed.query}" if parsed.query else ""
+                self.send_response(302)
+                self.send_header("Location", f"/demo/{slug}/{query}")
+                self.end_headers()
+                return
+            file_path = "index.html"
+        else:
+            file_path = parts[1]
+
+        demo_dir = DEMOS_DIR / slug
+        if not demo_dir.is_dir():
+            self.send_error(404, f"Demo '{slug}' niet gevonden of verlopen.")
+            return
+
+        # 1. Specifiek bestand in de demo-map zelf (bijv. annotations.json of config.json)
+        local_file = demo_dir / file_path
+        if local_file.is_file():
+            mime, _ = mimetypes.guess_type(str(local_file))
+            if file_path == "annotations.json":
+                self.increment_demo_views(slug)
+                mime = "application/json"
+            elif file_path.endswith(".json"):
+                mime = "application/json"
+            self.serve_file(local_file, mime or "application/octet-stream")
+            return
+
+        # 2. Master template viewer bestanden (index.html, assets, point_cloud.splat, audio.mp3)
+        dist_dir = TOOL_DIR / "viewer" / "dist"
+        master_file = dist_dir / file_path
+        if master_file.is_file():
+            mime, _ = mimetypes.guess_type(str(master_file))
+            if file_path.endswith(".js") or file_path.endswith(".mjs"):
+                mime = "application/javascript"
+            elif file_path.endswith(".splat"):
+                mime = "application/octet-stream"
+            elif file_path.endswith(".json"):
+                mime = "application/json"
+            elif file_path.endswith(".mp3"):
+                mime = "audio/mpeg"
+            self.serve_file(master_file, mime or "application/octet-stream")
+            return
+
+        # 3. Fallback naar objecten/TestNaAI/viewer/dist voor 3D splats
+        fallback_dist = OBJECTEN_DIR / "TestNaAI" / "viewer" / "dist" / file_path
+        if fallback_dist.is_file():
+            mime, _ = mimetypes.guess_type(str(fallback_dist))
+            if file_path.endswith(".splat"):
+                mime = "application/octet-stream"
+            self.serve_file(fallback_dist, mime or "application/octet-stream")
+            return
+
+        self.send_error(404, f"Bestand '{file_path}' niet gevonden voor demo '{slug}'.")
 
     def serve_file(self, filepath, content_type):
         try:

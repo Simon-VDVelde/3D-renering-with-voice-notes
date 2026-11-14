@@ -41,7 +41,8 @@ async function verifyAccess() {
 
   if (!config.pin_enabled || (!config.pin_hash && !config.admin_hash)) {
     if (authOverlay) authOverlay.style.display = 'none';
-    return { role: 'admin', config };
+    const defaultRole = config.default_role || (config.is_demo ? 'operator' : 'admin');
+    return { role: defaultRole, config };
   }
 
   // Zorg dat het invoerveld leeg is en focus krijgt
@@ -111,7 +112,12 @@ async function initViewer() {
   const roleBadge = document.getElementById('role-badge');
   function updateRoleBadge() {
     if (!roleBadge) return;
-    if (userRole === 'admin') {
+    if (config.is_demo) {
+      roleBadge.textContent = '✨ 3D Demo Preview';
+      roleBadge.style.background = 'rgba(59, 130, 246, 0.2)';
+      roleBadge.style.borderColor = '#3b82f6';
+      roleBadge.style.color = '#93c5fd';
+    } else if (userRole === 'admin') {
       roleBadge.textContent = '👑 Supervisor / Admin';
       roleBadge.style.background = 'rgba(59, 130, 246, 0.2)';
       roleBadge.style.borderColor = '#3b82f6';

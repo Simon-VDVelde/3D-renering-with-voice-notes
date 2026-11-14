@@ -88,11 +88,15 @@ debug_frames/
 *.log
 
 # ==========================================================
-# SALES AGENT DATA
+# SALES AGENT DATA & DEMO DATABASE
 # ==========================================================
 sales-agent/leads.csv
 sales-agent/*.csv
 leads.csv
+demos/
+*.db
+*.sqlite
+*.sqlite3
 
 # ==========================================================
 # OS & EDITOR BESTANDEN
