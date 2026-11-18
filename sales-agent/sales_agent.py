@@ -586,6 +586,7 @@ class EmailDispatcher:
 
         # Resend API
         self.resend_api_key = os.environ.get("RESEND_API_KEY", "").strip()
+        self.resend_test_recipient = os.environ.get("RESEND_TEST_RECIPIENT", "").strip()
 
     def format_from_header(self):
         """Maakt een propere 'Naam <email>' afzender header."""
@@ -752,29 +753,44 @@ class EmailDispatcher:
 
     def _send_resend(self, to_email, to_name, subject, body_text):
         """Verstuurt de e-mail via de Resend REST API."""
-        print(f"   🚀 [EmailDispatcher: Resend] E-mail versturen naar {to_name} <{to_email}>...")
+        target_to = self.resend_test_recipient if self.resend_test_recipient else to_email
+        is_test_redirect = bool(self.resend_test_recipient and self.resend_test_recipient.lower() != to_email.lower())
+
+        prefix_note = ""
+        mail_subject = subject
+        if is_test_redirect:
+            print(f"   🚀 [EmailDispatcher: Resend TESTMODUS] E-mail voor {to_name} ({to_email}) wordt verzonden naar testadres: {target_to}...")
+            prefix_note = f"[TESTMODUS - Oorspronkelijk bestemd voor: {to_name} <{to_email}>]\n\n"
+            mail_subject = f"[TEST] {subject}"
+        else:
+            print(f"   🚀 [EmailDispatcher: Resend] E-mail versturen naar {to_name} <{to_email}>...")
+
         try:
             url = "https://api.resend.com/emails"
             headers = {
                 "Authorization": f"Bearer {self.resend_api_key}",
                 "Content-Type": "application/json"
             }
+            full_body_text = prefix_note + body_text
             payload = {
                 "from": self.format_from_header(),
-                "to": [to_email],
-                "subject": subject,
-                "text": body_text,
-                "html": self._convert_to_html(body_text)
+                "to": [target_to],
+                "subject": mail_subject,
+                "text": full_body_text,
+                "html": self._convert_to_html(full_body_text)
             }
             res = requests.post(url, headers=headers, json=payload, timeout=15)
             if res.status_code in (200, 201):
                 data = res.json()
                 resend_id = data.get("id", "")
+                status_msg = f"Verzonden via Resend ({resend_id})"
+                if is_test_redirect:
+                    status_msg += f" [Testmail naar {target_to}]"
                 print(f"   ✅ [EmailDispatcher] E-mail succesvol verzonden via Resend! (ID: {resend_id})")
                 return {
                     "success": True,
                     "action": "send",
-                    "status": f"Verzonden via Resend ({resend_id})",
+                    "status": status_msg,
                     "details": f"Resend ID: {resend_id}"
                 }
             else:
